@@ -1,55 +1,75 @@
 # excalidraw-as-code
 
-A Claude Code skill that draws architecture and flow diagrams as Excalidraw files.
-Claude writes a small Python script that lays the diagram out on a grid, the script reports
-overlaps and labels that don't fit, then it renders the diagram and Claude reviews a preview
-and fixes it before showing you.
+An agent skill that draws architecture, flow, sequence and ER diagrams as editable
+Excalidraw files.
 
-Fill patterns carry meaning. Solid means built, hachure means a third party, cross-hatch with
-a dashed outline means planned, zigzag means being retired.
+![example](examples/out/microservices.svg)
 
-![example](examples/out/web_app.svg)
-
-## What you get
+Ask your agent for a diagram and you get three files:
 
 | File | Use |
 |---|---|
-| `system.py` | the build script, edit and rerun it to change the diagram |
-| `system.excalidraw` | open at excalidraw.com to keep editing by hand |
-| `system.svg` | drop into docs, READMEs and wikis |
-
-Ask for a PNG when you need one for slides or chat.
+| `system.py` | the script that builds the diagram, edit and rerun it to change anything |
+| `system.excalidraw` | open at [excalidraw.com](https://excalidraw.com) to keep editing by hand |
+| `system.svg` | drop into docs and READMEs |
 
 ## Install
 
-Copy this folder into a Claude Code skills directory.
+Needs Python 3.9+, internet access to [kroki.io](https://kroki.io) for rendering, and Chrome,
+Chromium, Edge or Firefox for previews.
 
-| Scope | Location |
-|---|---|
-| Just you, every project | `~/.claude/skills/excalidraw-as-code/` |
-| One project, shared with the team | `<project>/.claude/skills/excalidraw-as-code/` |
-
-Then ask Claude something like "draw the architecture of this repo" or
-"/excalidraw-as-code a diagram of the login flow".
-
-## Needs
-
-- Python 3.9 or newer, no packages
-- Internet access to kroki.io for rendering, or your own Kroki with
-  `docker run -p 8000:8000 yuzutech/kroki` and `KROKI_URL=http://localhost:8000`
-- Chrome, Edge or Chromium for the preview and PNG (set `BROWSER_BIN` if it isn't found)
-
-## Use it without Claude
+**If your agent supports skills**, clone the repo into its skills folder and it picks the skill
+up on its own.
 
 ```bash
-python examples/web_app.py
-python scripts/render.py examples/out/web_app.excalidraw          # svg plus a temp preview
-python scripts/render.py examples/out/web_app.excalidraw --png    # also keep a png
+# Claude Code, for you in every project
+git clone https://github.com/RividuPesara/excalidraw-as-code ~/.claude/skills/excalidraw-as-code
+
+# or for one project, shared with your team
+git clone https://github.com/RividuPesara/excalidraw-as-code .claude/skills/excalidraw-as-code
 ```
 
-## Files
+**For any other agent**, clone it anywhere and point the agent at it.
 
-- `SKILL.md` holds the instructions Claude follows
-- `scripts/excalidraw.py` is the layout library with boxes, zones, grids, wires, fill states and the layout check
-- `scripts/render.py` exports SVG through Kroki and the PNG through a headless browser
-- `examples/web_app.py` is a template for new diagrams
+```bash
+git clone https://github.com/RividuPesara/excalidraw-as-code ~/tools/excalidraw-as-code
+```
+
+Then start your request with something like:
+
+```text
+Read ~/tools/excalidraw-as-code/SKILL.md and follow it to draw the architecture of this repo
+```
+
+You can also add that line to your agent's rules file, such as `AGENTS.md`, so it uses the
+skill every time you ask for a diagram.
+
+To update, run `git pull` in the folder.
+
+## Use
+
+Ask your agent in plain words.
+
+```text
+draw the architecture of this repo
+make a sequence diagram of the login flow
+```
+
+The agent reads your code, writes the script, renders the diagram, checks the preview and fixes
+it before showing you.
+
+To run it without an agent, start from an example:
+
+```bash
+python examples/microservices.py
+python scripts/render.py examples/out/microservices.excalidraw
+```
+
+## More
+
+- [Examples](examples/) for flowcharts, sequence diagrams, ER models and icons
+- [reference.md](reference.md) for the full API, arrowheads, fonts and icon libraries
+- [SKILL.md](SKILL.md) for the workflow the agent follows
+
+Diagrams are sent to kroki.io to render. For private diagrams run your own with
+`docker run -p 8000:8000 yuzutech/kroki` and set `KROKI_URL=http://localhost:8000`.

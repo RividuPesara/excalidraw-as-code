@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -21,7 +23,8 @@ BROWSERS = [
     "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
 ]
-BROWSER_NAMES = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "chrome"]
+BROWSER_NAMES = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "chrome",
+                 "firefox"]
 
 
 def to_svg(src: Path, out: Path) -> None:
@@ -31,8 +34,11 @@ def to_svg(src: Path, out: Path) -> None:
         data=src.read_bytes(),
         headers={"Content-Type": "text/plain", "User-Agent": "excalidraw-as-code"},
     )
-    with urllib.request.urlopen(req, timeout=90) as res:
-        out.write_bytes(res.read())
+    try:
+        with urllib.request.urlopen(req, timeout=90) as res:
+            out.write_bytes(res.read())
+    except urllib.error.HTTPError as err:
+        sys.exit(f"kroki said {err.code} {err.read().decode(errors='ignore')[:400]}")
 
 
 def find_browser() -> str | None:
@@ -48,21 +54,41 @@ def find_browser() -> str | None:
     return None
 
 
+def workdir(browser: str) -> Path:
+    # snap browsers cannot see /tmp or dot folders so they get their own common folder
+    if "/snap/" in browser or Path(browser).resolve().parts[:2] == ("/", "snap"):
+        d = Path.home() / "snap" / Path(browser).name / "common" / "excalidraw-as-code"
+    else:
+        d = Path(tempfile.gettempdir()) / "excalidraw-as-code" / "work"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def to_png(svg: Path, out: Path, scale: float) -> bool:
     browser = find_browser()
     if not browser:
-        print("no Chrome or Edge or Chromium found so set BROWSER_BIN to get a png", file=sys.stderr)
+        print("no Chrome, Edge, Chromium or Firefox found so set BROWSER_BIN to get a png", file=sys.stderr)
         return False
     head = svg.read_text(encoding="utf-8", errors="ignore")[:2000]
     match = re.search(r'viewBox="[\d.\-]+ [\d.\-]+ ([\d.]+) ([\d.]+)"', head)
-    width, height = (int(float(match.group(1))), int(float(match.group(2)))) if match else (1600, 1000)
-    # screenshot the svg at its own size
-    subprocess.run(
-        [browser, "--headless=new", "--disable-gpu", "--hide-scrollbars", f"--force-device-scale-factor={scale}",
-         f"--window-size={width},{height}", f"--screenshot={out.resolve()}", svg.resolve().as_uri()],
-        check=True, capture_output=True, timeout=120,
-    )
-    return out.exists()
+    width, height = (math.ceil(float(match.group(1))), math.ceil(float(match.group(2)))) if match else (1600, 1000)
+    work = workdir(browser)
+    page, shot = work / svg.name, work / out.name
+    shutil.copyfile(svg, page)
+    shot.unlink(missing_ok=True)
+    if "firefox" in Path(browser).name:
+        cmd = [browser, "--headless", "--screenshot", str(shot), f"--window-size={width},{height}", page.as_uri()]
+    else:
+        cmd = [browser, "--headless=new", "--disable-gpu", "--hide-scrollbars", f"--force-device-scale-factor={scale}",
+               f"--window-size={width},{height}", f"--screenshot={shot}", page.as_uri()]
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if not shot.exists():
+        print(f"{Path(browser).name} made no png\n{res.stderr[-800:]}", file=sys.stderr)
+        return False
+    out.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(shot), out)
+    page.unlink(missing_ok=True)
+    return True
 
 
 def main() -> None:
