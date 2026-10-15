@@ -67,7 +67,8 @@ python scripts/render.py examples/out/microservices.excalidraw
 
 ## More
 
-- [Examples](examples/) for flowcharts, sequence diagrams, ER models and icons
+- [Examples](examples/) for flowcharts, sequence diagrams, ER models, icons and UML component and
+  deployment views
 - [reference.md](reference.md) for the full API, arrowheads, fonts and icon libraries
 - [SKILL.md](SKILL.md) for the workflow the agent follows
 

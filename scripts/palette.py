@@ -18,6 +18,19 @@ TONES = {
 
 INK = {"head": "#1e1e1e", "body": "#343a40", "soft": "#495057", "wire": "#495057"}
 
+SKETCH_TONES = {
+    "entry": ("#a5d8ff", "#1971c2", "#4dabf7"),
+    "service": ("#b2f2bb", "#2b8a3e", "#69db7c"),
+    "store": ("#ffd8a8", "#d9480f", "#ffa94d"),
+    "outside": ("#eebefa", "#9c36b5", "#da77f2"),
+    "gate": ("#ffec99", "#8a6d00", "#ffd43b"),
+    "focus": ("#d0bfff", "#6741d9", "#9775fa"),
+    "alert": ("#ffc9c9", "#e03131", "#ff8787"),
+    "plain": ("#e9ecef", "#343a40", "#ced4da"),
+}
+
+SKETCH_INK = {"head": "#1e1e1e", "body": "#1e1e1e", "soft": "#343a40", "wire": "#1e1e1e"}
+
 NOTE = ("#fff3bf", "#e67700")
 
 ZONE = ("#f8f9fa", "#868e96")
@@ -85,10 +98,13 @@ def report(tones: dict[str, tuple[str, str, str]] = TONES, background: str = "#f
 
 
 if __name__ == "__main__":
-    for kind, (fill, stroke, hatch) in TONES.items():
-        print(f"{kind:8} fill {fill} outline {stroke} hatch {hatch}  "
-              f"text {contrast(INK['head'], fill):4.1f}  outline {contrast(stroke, '#ffffff'):3.1f}")
-    found = report()
+    found = []
+    for name, tones in (("sketch", SKETCH_TONES), ("clean", TONES)):
+        print(name)
+        for kind, (fill, stroke, hatch) in tones.items():
+            print(f"  {kind:8} fill {fill} outline {stroke} hatch {hatch}  "
+                  f"text {contrast(INK['head'], fill):4.1f}  outline {contrast(stroke, '#ffffff'):3.1f}")
+        found += [f"{name} {p}" for p in report(tones)]
     for p in found:
         print(f"check {p}")
     sys.exit(1 if found else 0)

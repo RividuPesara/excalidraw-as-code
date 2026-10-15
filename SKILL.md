@@ -68,17 +68,21 @@ For follow-up requests, edit the script and rerun with the same file names.
 | many feed one | merge | the many in one layer, the one in the next |
 | named products or clouds | icons | `icon()` from a community library |
 | sections of a bigger picture | frames | `frame()` around each part |
+| UML component, package or deployment view | black and white notation | `scripts/uml.py`, see `examples/uml_views.py` |
+| one design shown across versions | a `build(version)` function | the same ids every version, `highlight()` what changed |
 
 ## Library at a glance
 
 ```python
-s = Scene()                                   # Scene(style="sketch") for hand drawn
+s = Scene()                                   # the excalidraw look, Scene(style="clean") for crisp lines
 top = s.title("Heading", "subtitle")          # returns the y below the title block
 s.box(id, x, y, w, h, "Name\ndetail", kind="service", state="built", shape="rectangle")
 s.box(id, x, y, label="Auto sized")           # w and h from the text
 s.connect(id, src, dst, "label", style="dashed", head="arrow", tail=None)
 s.arrange([["a"], ["b", "c"], ["d"]], x, y, direction="right", gap=150, spread=60)
 s.zone_around(id, ["b", "c"], "Group", "short note")
+s.box(id, x, y, label="Postgres", kind="store", shape="cylinder")
+s.highlight(id)                               # pink outline for what a version added
 s.save("system.excalidraw")
 ```
 
@@ -88,7 +92,9 @@ Everything else, with signatures, arrowheads, fonts and icon libraries, is in
 
 ### kind sets the colour by role
 
-The palette comes from open-color, the same scale as the Excalidraw colour picker. Every label
+Diagrams look like they were drawn in Excalidraw by default, with rough strokes, the Excalifont
+hand drawn face and the shades from the editor's colour picker. `Scene(style="clean")` switches
+to straight lines, a plain font and softer tones. Both palettes come from open-color. Every label
 clears 12 to 1 contrast on its fill, every outline clears 4 to 1 on white, and kinds that look
 alike to colour blind readers are told apart by pattern, outline weight or shape as well.
 `python scripts/palette.py` re-checks it after any change.
@@ -154,6 +160,21 @@ Add `legend()` whenever more than one state appears.
 | `x straddles the border of zone z` | include x in the zone or move it out |
 | `arrowhead of w is squeezed` | give the last run of the wire 30px or more |
 
+## Diagrams for a report or slide
+
+- A full width diagram shrinks to about half size on an A4 page, so raise the text before
+  placing boxes. Set `SIZE["label"]`, `SIZE["note"]` and `SIZE["tiny"]` near the top of the
+  script, or pass `size=` and `label_size=`. Nothing under 15 survives the shrink.
+- Render with `--png --scale 2` and insert the PNG. Keep the SVG for the web.
+- Leave the title and legend out when the document gives the figure a caption, and say what the
+  colours or the highlight mean in the text instead.
+- Formal documents usually read better with `Scene(style="clean")`.
+- For UML views use `uml.py`. It draws in black ink on white, puts the view in a `frame()` with
+  its kind and name in the corner tag, and uses `store()` cylinders for databases.
+- When one design evolves over iterations, write `build(version)` once, add elements under
+  `if version >= n`, and call `s.highlight(id)` on what that version added or changed. Every
+  view then keeps its layout and readers spot the change at a glance.
+
 ## Reviewing the PNG
 
 - Can you trace the main path in one sentence? If not, the order of boxes is wrong.
@@ -176,3 +197,12 @@ Add `legend()` whenever more than one state appears.
 - Text never wraps on its own. Use `\n`.
 - Each element id is used once. A repeat raises an error instead of corrupting the scene.
 - Kroki treats a JSON content type as an API envelope and fails. `render.py` posts plain text.
+- A wire into a container or zone needs a free gap in front of it. Stacked layers with only a
+  zone heading between them give `found no clear path`. Hand route those with `arrow()` and
+  `anchor()`.
+- Hand routed `arrow()` wires are drawn after the containers they cross and hide their names.
+  Call `uml.titles_on_top(s)` before `save()`.
+- A ball and socket pair cannot be joined by a routed wire, the shapes are too small. Use
+  `uml.assembly()`, which draws the ball sitting in the socket in the gap between components.
+- Shapes drawn with depth, such as `uml.node()`, set `_extent` so wires meet the outer edge and
+  not the front face. Give any new 3D shape the same.

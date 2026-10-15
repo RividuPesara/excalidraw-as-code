@@ -5,8 +5,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "scripts"))
 from excalidraw import Scene  # noqa: E402
 
-# sketch style switches to the hand drawn font and rough strokes
-s = Scene(style="sketch")
+# clean style swaps the hand drawn look for crisp lines and a plain font
+s = Scene(style="clean")
 top = s.title("Release", "what happens after a merge to main")
 
 s.box("merge", 0, 0, label="Merge to main", kind="entry", shape="ellipse")

@@ -6,10 +6,12 @@ libraries worth reaching for. `SKILL.md` has the workflow and the layout rules.
 ## Scene
 
 ```python
-s = Scene(style="clean", background="#ffffff", font=None)
+s = Scene(style="sketch", background="#ffffff", font=None)
 ```
 
-`style="sketch"` switches to rough strokes and the Excalifont hand drawn face. `font` overrides
+`style="sketch"`, the default, draws like the Excalidraw editor with rough strokes, the
+Excalifont hand drawn face, ink `#1e1e1e` and the colour picker shades. `style="clean"` gives
+straight lines, Helvetica and softer tones. `font` overrides
 the face for the whole scene, one of `sans`, `hand`, `code`, `rounded`, `comic`, `virgil`.
 
 ## Shapes and text
@@ -18,7 +20,7 @@ the face for the whole scene, one of `sans`, `hand`, `code`, `rounded`, `comic`,
 |---|---|
 | `title(heading, subtitle=None, x=40, y=0)` | the heading block, returns the y below it |
 | `text(id, x, y, s, size=SIZE["note"], ink="soft", align="left", font=None)` | free text, `x` is the anchor of the alignment |
-| `box(id, x, y, w=None, h=None, label="", kind="service", state=None, shape="rectangle", size=17)` | a component, `shape` is `rectangle`, `ellipse` or `diamond`, size comes from the label when `w` or `h` is left out |
+| `box(id, x, y, w=None, h=None, label="", kind="service", state=None, shape="rectangle", size=None)` | a component, `shape` is `rectangle`, `ellipse`, `diamond` or `cylinder`, size comes from the label when `w` or `h` is left out |
 | `grid(prefix, labels, x, y, cols, w, h, gap_x=32, gap_y=24, kind=..., state=...)` | boxes in rows, returns their ids |
 | `table(id, x, y, name, fields, kind="store", w=None)` | an ER entity with a header band and one field per line |
 | `note(id, x, y, s, w=None)` | a sticky note for a remark that is not a component |
@@ -28,18 +30,25 @@ the face for the whole scene, one of `sans`, `hand`, `code`, `rounded`, `comic`,
 | `zone_around(id, ids, title="", note="", pad=32, kind="plain", heading="top")` | a zone sized to wrap the given boxes and its own heading, `heading="side"` puts the heading in a left column so wires can come down into the children |
 | `frame(id, x, y, w, h, name="")` | an Excalidraw frame, everything fully inside joins it and is clipped to it |
 | `legend(x, y, states=None, kinds=None)` | swatches for fill states and, as a dict of kind to name, colour roles |
+| `highlight(id, color="#e64980", width=4)` | recolours a shape or wire with all its parts, hairline glyph parts keep their weight |
 
 `kind` on a zone tints it in the lightest shade of that role, for tiers that belong to one owner.
 
-`SIZE` is `head` 32, `section` 22, `label` 17, `note` 15, `tiny` 13. `ink` is `head`, `body`,
+`SIZE` is `head` 32, `section` 22, `label` 17, `note` 15, `tiny` 13. Sizes left out are read
+from `SIZE` at call time, so changing it at the top of a script changes every later shape. Wire
+labels use `tiny` unless `label_size` is given.
+
+A `cylinder` is drawn from two ellipses, two lines and a fill. An invisible box over the whole
+drum carries the label and the wire bindings, so `move()`, `connect()` and `highlight()` treat
+it as one shape. `ink` is `head`, `body`,
 `soft` or any hex colour.
 
 ## Wires
 
 | call | what it does |
 |---|---|
-| `connect(id, src, dst, label=None, style="solid", head="arrow", tail=None, sides=(None, None), elbow=False, width=2)` | a wire routed on save around every shape and free text |
-| `arrow(id, points, src=None, dst=None, label=None, style="solid", label_at=None, head="arrow", tail=None, elbow=False)` | a wire on a route you give, for the rare case the router should not decide |
+| `connect(id, src, dst, label=None, style="solid", head="arrow", tail=None, sides=(None, None), elbow=False, width=2, label_size=None)` | a wire routed on save around every shape and free text |
+| `arrow(id, points, src=None, dst=None, label=None, style="solid", label_at=None, head="arrow", tail=None, elbow=False, label_size=None)` | a wire on a route you give, for the rare case the router should not decide |
 | `sequence(prefix, x, y, actors, messages, gap=240, step=56, kind="service", numbered=True)` | actors with lifelines and one numbered message per row, returns the bottom y |
 | `arrange(layers, x, y, direction="right", gap=160, spread=40)` | places the boxes of each layer, orders layers to remove crossings and lines each box up with what feeds it |
 | `move(id, x, y)` | moves a box with its label, caption or parts |
@@ -58,6 +67,29 @@ between facing sides is lined up to run straight. Wires are routed again in orde
 gaps between shapes, paying for length, bends, crossings and shared tracks, so a short detour
 always wins over a crossing. Any wire that still crosses is torn up and routed against all the
 others. Diamonds and ellipses give each wire its own vertex.
+
+## UML
+
+`scripts/uml.py` draws UML notation in black and white on a `Scene`. Import it next to
+`excalidraw`. Every call takes the scene first and returns the element wires bind to.
+
+| call | what it draws |
+|---|---|
+| `component(s, id, x, y, w, h, name, stereo=None)` | a component with the component glyph top right |
+| `subsystem(s, id, x, y, w, h, name)` | a component holding others, its name in a band across the top |
+| `package(s, id, x, y, w, h, name)` | a package with a small tab |
+| `layer(s, id, x, y, w, h, name, model=False)` | a package holding others, name in the tab, `model=True` adds the triangle |
+| `node(s, id, x, y, w, h, name, stereo="device", holds=True)` | a 3D deployment node, `holds=False` for a leaf with a centred label |
+| `artifact(s, id, x, y, w, h, name)` | an artifact with the document glyph |
+| `store(s, id, x, y, w, h, name)` | a database cylinder in black and white |
+| `provided(s, id, owner, side, name=None, t=0.5)` | a ball on a stub from a port on `owner` |
+| `required(s, id, owner, side, name=None, t=0.5)` | a socket on a stub from a port on `owner` |
+| `assembly(s, id, consumer, provider, name=None)` | ball in socket in the gap between two facing components |
+| `frame(s, id, x, y, w, h, kind, name)` | the diagram frame with `kind name` in the corner tag, such as `cmp` or `deployment` |
+| `titles_on_top(s)` | moves container names last so hand routed wires pass behind them |
+
+Dependencies are `connect(..., style="dashed")`, protocols go in the wire label such as
+`«protocol» HTTPS`. Call `s.highlight(id)` on anything a version added.
 
 ## Arrowheads
 
@@ -79,8 +111,8 @@ Set `tail` for a head on the start. `head=None` makes a plain connector.
 
 | font | family | look |
 |---|---|---|
-| `sans` | 2 Helvetica | the default, clean |
-| `hand` | 5 Excalifont | the current hand drawn face, used by `style="sketch"` |
+| `sans` | 2 Helvetica | plain, used by `style="clean"` |
+| `hand` | 5 Excalifont | the current hand drawn face, the default |
 | `virgil` | 1 Virgil | the older hand drawn face |
 | `code` | 3 Cascadia | monospace for code and identifiers |
 | `rounded` | 6 Nunito | soft and friendly |
@@ -128,7 +160,8 @@ These libraries were checked to import cleanly.
 
 ## Palette
 
-`scripts/palette.py` holds `TONES` as kind to fill, outline and hatch, all open-color values.
+`scripts/palette.py` holds `SKETCH_TONES` for the default style and `TONES` for the clean one,
+each as kind to fill, outline and hatch, all open-color values.
 Running it prints the contrast of each kind and fails if a label drops under 4.5 to 1, an
 outline under 3 to 1, or two kinds become indistinguishable under deuteranopia, protanopia or
 tritanopia. Re-run it after changing any colour, for example to a brand palette.

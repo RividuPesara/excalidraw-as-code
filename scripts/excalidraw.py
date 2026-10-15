@@ -8,7 +8,7 @@ from pathlib import Path
 import library
 import route
 from metrics import ASCII, MONO, WIDTHS
-from palette import INK, NOTE, TONES, ZONE
+from palette import INK, NOTE, SKETCH_INK, SKETCH_TONES, TONES, ZONE
 
 # lighter tint per kind for zones that belong to one role
 ZONE_TINT = {
@@ -31,6 +31,7 @@ HEAD_ALIAS = {"dot": "circle", "one": "crowfoot_one", "many": "crowfoot_many",
 
 PAD = 5
 MIN_GAP = 16
+CAP = 14
 
 
 def measure(s: str, size: float, font: int = 2) -> tuple[float, float]:
@@ -60,7 +61,7 @@ def _head(name: str | None) -> str | None:
 
 
 class Scene:
-    def __init__(self, style: str = "clean", background: str = "#ffffff", font: str | int | None = None) -> None:
+    def __init__(self, style: str = "sketch", background: str = "#ffffff", font: str | int | None = None) -> None:
         if style not in ("clean", "sketch"):
             raise ValueError("style is clean or sketch")
         self.elements: list[dict] = []
@@ -68,6 +69,8 @@ class Scene:
         self.background = background
         self.roughness = 1 if style == "sketch" else 0
         self.font = FONTS.get(font, font) if font else (5 if style == "sketch" else 2)
+        self.tones = SKETCH_TONES if style == "sketch" else TONES
+        self.ink = SKETCH_INK if style == "sketch" else INK
         self.wires: list[dict] = []
         self.problems_found: list[str] = []
         self._stuck: list[str] = []
@@ -101,13 +104,14 @@ class Scene:
         parent = self.by_id[parent_id]
         parent["boundElements"] = (parent["boundElements"] or []) + [{"id": child_id, "type": kind}]
 
-    def text(self, id_: str, x: float, y: float, s: str, size: float = SIZE["note"], ink: str = "soft",
+    def text(self, id_: str, x: float, y: float, s: str, size: float | None = None, ink: str = "soft",
              align: str = "left", font: str | int | None = None, before: str | None = None, **kw) -> dict:
+        size = size or SIZE["note"]
         fam = FONTS.get(font, font) if font else self.font
         w, h = measure(s, size, fam)
         # x is the anchor of the alignment so centred and right text grow from it
         left = x - w / 2 if align == "center" else (x - w if align == "right" else x)
-        return self._add(id_, "text", left, y, w, h, INK.get(ink, ink), before=before, text=s, originalText=s,
+        return self._add(id_, "text", left, y, w, h, self.ink.get(ink, ink), before=before, text=s, originalText=s,
                          fontSize=size, fontFamily=fam, textAlign=align, verticalAlign="top",
                          containerId=None, lineHeight=LINE_HEIGHT.get(fam, 1.25), autoResize=True, **kw)
 
@@ -126,7 +130,7 @@ class Scene:
         w, h = measure(s, size, fam)
         x = box["x"] + (box["width"] - w) / 2 if align == "center" else box["x"] + PAD + 4
         y = box["y"] + (box["height"] - h) / 2 if valign == "middle" else box["y"] + PAD + 4
-        e = self._add(f"{parent}__label", "text", x, y, w, h, INK.get(ink, ink), text=s, originalText=s,
+        e = self._add(f"{parent}__label", "text", x, y, w, h, self.ink.get(ink, ink), text=s, originalText=s,
                       fontSize=size, fontFamily=fam, textAlign=align, verticalAlign=valign, containerId=parent,
                       lineHeight=LINE_HEIGHT.get(fam, 1.25), autoResize=True, groupIds=list(box["groupIds"]))
         self._attach(parent, e["id"], "text")
@@ -134,16 +138,20 @@ class Scene:
 
     def box(self, id_: str, x: float, y: float, w: float | None = None, h: float | None = None, label: str = "",
             kind: str = "service", state: str | None = None, shape: str = "rectangle",
-            size: float = SIZE["label"]) -> dict:
-        fill, stroke, hatch = TONES[kind]
+            size: float | None = None) -> dict:
+        size = size or SIZE["label"]
+        fill, stroke, hatch = self.tones[kind]
         state = state or ("external" if kind == "outside" else "built")
         style = FILLS[state]
         if w is None or h is None:
             tw, th = measure(label, size, self.font)
             # ellipses and diamonds only hold text in their middle
-            grow = {"rectangle": 1.0, "ellipse": 1.42, "diamond": 2.0}[shape]
+            grow = {"rectangle": 1.0, "ellipse": 1.42, "diamond": 2.0, "cylinder": 1.0}[shape]
             w = w or max(120, math.ceil(((tw + 2 * PAD + 24) * grow) / 10) * 10)
-            h = h or max(56, math.ceil(((th + 2 * PAD + 20) * grow) / 4) * 4)
+            h = h or max(56, math.ceil(((th + 2 * PAD + 20) * grow) / 4) * 4) + (3 * CAP if shape == "cylinder" else 0)
+        if shape == "cylinder":
+            return self._cylinder(id_, x, y, w, h, label, size, fill if style == "solid" else hatch, stroke, style,
+                                  state == "planned")
         e = self._add(id_, shape, x, y, w, h, stroke, hatch if style != "solid" else fill, fillStyle=style,
                       strokeStyle="dashed" if state == "planned" else "solid",
                       strokeWidth=4 if kind == "focus" else 2,
@@ -152,9 +160,33 @@ class Scene:
             self._label(id_, label, size)
         return e
 
+    def _cylinder(self, id_: str, x: float, y: float, w: float, h: float, label: str, size: float, bg: str,
+                  stroke: str, style: str, dashed: bool) -> dict:
+        line = "dashed" if dashed else "solid"
+        self._add(f"{id_}__bot", "ellipse", x, y + h - 2 * CAP, w, 2 * CAP, stroke, bg, fillStyle=style,
+                  strokeStyle=line, _owner=id_)
+        if style != "solid":
+            # hatching is see through so a white mask hides the back of the bottom rim
+            self._add(f"{id_}__mask", "rectangle", x, y + CAP, w, h - 2 * CAP, "transparent", self.background,
+                      strokeWidth=0, _owner=id_)
+        # no outline on the body so it hides the back of the bottom rim
+        self._add(f"{id_}__body", "rectangle", x, y + CAP, w, h - 2 * CAP, "transparent", bg, fillStyle=style,
+                  strokeWidth=0, _owner=id_)
+        for side, sx in (("l", x), ("r", x + w)):
+            self.line(f"{id_}__{side}", [(sx, y + CAP), (sx, y + h - CAP)], line, stroke)["_owner"] = id_
+        self._add(f"{id_}__top", "ellipse", x, y, w, 2 * CAP, stroke, bg, fillStyle=style, strokeStyle=line,
+                  _owner=id_)
+        # an invisible box over the whole drum carries the label and the wire bindings
+        e = self._add(id_, "rectangle", x, y, w, h, "transparent", "transparent", strokeWidth=0, _shape=True,
+                      _cylinder=True)
+        if label:
+            lab = self._label(id_, label, size)
+            lab["y"] += CAP / 2
+        return e
+
     def grid(self, prefix: str, labels: list[str], x: float, y: float, cols: int, w: float, h: float,
              gap_x: float = 32, gap_y: float = 24, kind: str = "service", state: str | None = None,
-             size: float = SIZE["label"]) -> list[str]:
+             size: float | None = None) -> list[str]:
         ids = []
         for i, label in enumerate(labels):
             id_ = f"{prefix}{i}"
@@ -165,7 +197,7 @@ class Scene:
 
     def zone(self, id_: str, x: float, y: float, w: float, h: float, title: str = "", note: str = "",
              kind: str = "plain", before: str | None = None) -> dict:
-        stroke = ZONE[1] if kind == "plain" else TONES[kind][2]
+        stroke = ZONE[1] if kind == "plain" else self.tones[kind][2]
         e = self._add(id_, "rectangle", x, y, w, h, stroke, ZONE_TINT[kind], before=before, strokeStyle="dashed",
                       roundness={"type": 3}, _zone=True)
         after = self.elements[self.elements.index(e) + 1]["id"] if before else None
@@ -202,7 +234,8 @@ class Scene:
         return self._add(id_, "frame", x, y, w, h, "#bbb", roughness=0, name=name or None, _frame=True,
                          before=self.elements[0]["id"] if self.elements else None)
 
-    def note(self, id_: str, x: float, y: float, s: str, w: float | None = None, size: float = SIZE["note"]) -> dict:
+    def note(self, id_: str, x: float, y: float, s: str, w: float | None = None, size: float | None = None) -> dict:
+        size = size or SIZE["note"]
         tw, th = measure(s, size, self.font)
         w = w or tw + 2 * PAD + 24
         e = self._add(id_, "rectangle", x, y, w, th + 2 * PAD + 20, NOTE[1], NOTE[0], roundness=None, _shape=True)
@@ -211,7 +244,7 @@ class Scene:
 
     def table(self, id_: str, x: float, y: float, name: str, fields: list[str], kind: str = "store",
               w: float | None = None) -> dict:
-        fill, stroke, _ = TONES[kind]
+        fill, stroke, _ = self.tones[kind]
         size = SIZE["note"]
         body = "\n".join(fields)
         tw = max(measure(name, SIZE["label"], self.font)[0], measure(body, size, self.font)[0])
@@ -250,7 +283,7 @@ class Scene:
         rel = [[px - x0, py - y0] for px, py in points]
         closed = fill is not None
         return self._add(id_, "line", x0, y0, max(p[0] for p in rel) - min(p[0] for p in rel),
-                         max(p[1] for p in rel) - min(p[1] for p in rel), color or INK["wire"],
+                         max(p[1] for p in rel) - min(p[1] for p in rel), color or self.ink["wire"],
                          fill or "transparent", strokeStyle=style, strokeWidth=width, points=rel,
                          lastCommittedPoint=None, startBinding=None, endBinding=None, startArrowhead=None,
                          endArrowhead=None, polygon=closed)
@@ -272,26 +305,27 @@ class Scene:
 
     def arrow(self, id_: str, points: list[tuple[float, float]], src: str | None = None, dst: str | None = None,
               label: str | None = None, style: str = "solid", label_at: tuple[float, float] | None = None,
-              head: str | None = "arrow", tail: str | None = None, elbow: bool = False, width: float = 2) -> dict:
-        e = self._wire(id_, src, dst, label, style, head, tail, elbow, width)
+              head: str | None = "arrow", tail: str | None = None, elbow: bool = False, width: float = 2,
+              label_size: float | None = None) -> dict:
+        e = self._wire(id_, src, dst, label, style, head, tail, elbow, width, label_size)
         self._set_points(e, [tuple(p) for p in points])
         self.wires.append({"id": id_, "fixed": True, "label_at": label_at})
         return e
 
     def connect(self, id_: str, src: str, dst: str, label: str | None = None, style: str = "solid",
                 head: str | None = "arrow", tail: str | None = None, sides: tuple[str | None, str | None] = (None, None),
-                elbow: bool = False, width: float = 2) -> dict:
+                elbow: bool = False, width: float = 2, label_size: float | None = None) -> dict:
         for ref in (src, dst):
             if ref not in self.by_id:
                 raise KeyError(f"connect {id_} names {ref!r} which does not exist yet")
-        e = self._wire(id_, src, dst, label, style, head, tail, elbow, width)
+        e = self._wire(id_, src, dst, label, style, head, tail, elbow, width, label_size)
         self.wires.append({"id": id_, "fixed": False, "src": src, "dst": dst, "sides": sides})
         return e
 
-    def _wire(self, id_, src, dst, label, style, head, tail, elbow, width) -> dict:
+    def _wire(self, id_, src, dst, label, style, head, tail, elbow, width, label_size=None) -> dict:
         if style not in ("solid", "dashed", "dotted"):
             raise ValueError("style is solid, dashed or dotted")
-        e = self._add(id_, "arrow", 0, 0, 1, 0, INK["wire"], strokeStyle=style, strokeWidth=width,
+        e = self._add(id_, "arrow", 0, 0, 1, 0, self.ink["wire"], strokeStyle=style, strokeWidth=width,
                       points=[[0, 0], [1, 0]], lastCommittedPoint=None,
                       startBinding={"elementId": src, "focus": 0, "gap": 1} if src else None,
                       endBinding={"elementId": dst, "focus": 0, "gap": 1} if dst else None,
@@ -301,9 +335,10 @@ class Scene:
             if ref:
                 self._attach(ref, id_, "arrow")
         if label:
-            lw, lh = measure(label, SIZE["tiny"], self.font)
-            t = self._add(f"{id_}__label", "text", 0, 0, lw, lh, INK["body"], text=label, originalText=label,
-                          fontSize=SIZE["tiny"], fontFamily=self.font, textAlign="center", verticalAlign="middle",
+            size = label_size or SIZE["tiny"]
+            lw, lh = measure(label, size, self.font)
+            t = self._add(f"{id_}__label", "text", 0, 0, lw, lh, self.ink["body"], text=label, originalText=label,
+                          fontSize=size, fontFamily=self.font, textAlign="center", verticalAlign="middle",
                           containerId=id_, lineHeight=LINE_HEIGHT.get(self.font, 1.25), autoResize=True)
             self._attach(id_, t["id"], "text")
         return e
@@ -442,6 +477,15 @@ class Scene:
                 o["y"] += dy
         self._laid_out = False
 
+    def highlight(self, id_: str, color: str = "#e64980", width: float = 4) -> None:
+        e = self.by_id[id_]
+        for o in [e] + [o for o in self.elements if o.get("_owner") == id_ and o["type"] != "text"]:
+            if o["strokeColor"] != "transparent":
+                o["strokeColor"] = color
+                # hairline glyph parts keep their weight or small icons fill in solid
+                if o["strokeWidth"] > 1.5:
+                    o["strokeWidth"] = width - 1 if o["type"] == "arrow" else width
+
     # geometry
 
     def bounds(self, id_: str) -> tuple[float, float, float, float]:
@@ -450,7 +494,8 @@ class Scene:
             xs = [e["x"] + p[0] for p in e["points"]]
             ys = [e["y"] + p[1] for p in e["points"]]
             return min(xs), min(ys), max(xs), max(ys)
-        return e["x"], e["y"], e["x"] + e["width"], e["y"] + e["height"]
+        l, t, r, b = e.get("_extent", (0, 0, 0, 0))
+        return e["x"] - l, e["y"] - t, e["x"] + e["width"] + r, e["y"] + e["height"] + b
 
     def _union(self, ids: list[str]) -> tuple[float, float, float, float]:
         rs = [self.bounds(i) for i in ids]
@@ -746,7 +791,7 @@ class Scene:
             w, h = measure(e["text"], e["fontSize"], e["fontFamily"])
             factor = {"ellipse": math.sqrt(2) / 2, "diamond": 0.5}.get(parent["type"], 1.0)
             room_w = parent["width"] * factor - 2 * PAD - 4
-            room_h = parent["height"] * factor - 2 * PAD
+            room_h = parent["height"] * factor - 2 * PAD - (3 * CAP if parent.get("_cylinder") else 0)
             if w > room_w or h > room_h:
                 problems.append(f"label of {parent['id']} needs {w:.0f}x{h:.0f} but has {room_w:.0f}x{room_h:.0f}")
 
